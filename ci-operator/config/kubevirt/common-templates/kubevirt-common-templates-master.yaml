@@ -6,6 +6,9 @@ base_images:
 build_root:
   project_image:
     dockerfile_path: builder/Dockerfile
+images:
+- dockerfile_path: dvtemplates/Dockerfile
+  to: fedora-latest
 resources:
   '*':
     limits:
@@ -188,6 +191,26 @@ tests:
         name: common-templates-container-disk-puller
         namespace: test-credentials
       from: src
+      resources:
+        requests:
+          cpu: 200m
+          memory: 400Mi
+    workflow: ipi-azure
+- as: fedora-periodic-image-build
+  cron: * * 1 * *
+  steps:
+    cluster_profile: azure4
+    test:
+    - artifact_dir: /tmp/artifacts
+      as: e2e-tests-fedora
+      commands: |
+        ./dvtemplate/fedora_new_image.sh
+        set -o pipefail
+        #kubeconfig is mounted from a secret, so its immutable. We have to copy it to some writable location.
+        cp -L $KUBECONFIG /tmp/kubeconfig && export KUBECONFIG=/tmp/kubeconfig
+        echo "${USER:-default}:x:$(id -u):$(id -g):Default User:$HOME:/sbin/nologin" >> /etc/passwd
+        export TARGET=fedora-test && make e2e-tests
+      from: fedora-latest
       resources:
         requests:
           cpu: 200m
